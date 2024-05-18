@@ -11,7 +11,8 @@ pub use self::{elaborate_workspace::ElaborateWorkspace, temp_project::TempProjec
 struct Manifest {
     #[serde(rename = "cargo-features", skip_serializing_if = "Option::is_none")]
     pub cargo_features: Option<Value>,
-    pub package: Table,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package: Option<Table>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dependencies: Option<Table>,
     #[serde(rename = "dev-dependencies", skip_serializing_if = "Option::is_none")]
@@ -31,7 +32,7 @@ struct Manifest {
 
 impl Manifest {
     pub fn name(&self) -> String {
-        match self.package["name"] {
+        match self.package.as_ref().unwrap()["name"] {
             Value::String(ref name) => name.clone(),
             _ => unreachable!(),
         }

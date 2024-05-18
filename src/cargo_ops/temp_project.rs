@@ -80,8 +80,8 @@ impl<'tmp> TempProject<'tmp> {
                 ::toml::from_str(&buf)?
             };
 
-            if om.package.contains_key("default-run") {
-                om.package.remove("default-run");
+            if om.package.as_ref().unwrap().contains_key("default-run") {
+                om.package.as_mut().unwrap().remove("default-run");
                 let om_serialized = ::toml::to_string(&om).expect("Cannot format as toml file");
                 let mut cargo_toml = OpenOptions::new()
                     .read(true)
@@ -93,8 +93,8 @@ impl<'tmp> TempProject<'tmp> {
 
             // if build script is specified in the original Cargo.toml (from links or build)
             // remove it as we do not need it for checking dependencies
-            if om.package.contains_key("links") {
-                om.package.remove("links");
+            if om.package.as_ref().unwrap().contains_key("links") {
+                om.package.as_mut().unwrap().remove("links");
                 let om_serialized = ::toml::to_string(&om).expect("Cannot format as toml file");
                 let mut cargo_toml = OpenOptions::new()
                     .read(true)
@@ -104,8 +104,8 @@ impl<'tmp> TempProject<'tmp> {
                 write!(cargo_toml, "{om_serialized}")?;
             }
 
-            if om.package.contains_key("build") {
-                om.package.remove("build");
+            if om.package.as_ref().unwrap().contains_key("build") {
+                om.package.as_mut().unwrap().remove("build");
                 let om_serialized = ::toml::to_string(&om).expect("Cannot format as toml file");
                 let mut cargo_toml = OpenOptions::new()
                     .read(true)
@@ -114,7 +114,7 @@ impl<'tmp> TempProject<'tmp> {
                     .open(&dest)?;
                 write!(cargo_toml, "{om_serialized}")?;
             }
-
+            
             let lockfile = from_dir.join("Cargo.lock");
             if lockfile.is_file() {
                 dest.pop();
@@ -123,16 +123,109 @@ impl<'tmp> TempProject<'tmp> {
             }
         }
 
+        let temp_workspace_path = temp_dir.path().join("!workspace");
+        fs::create_dir_all(temp_workspace_path.clone())?;
+
+        let dest = temp_workspace_path.join("Cargo.toml");
+
         // virtual root
         let mut virtual_root = workspace_root.join("Cargo.toml");
-        if !manifest_paths.contains(&virtual_root) && virtual_root.is_file() {
-            fs::copy(&virtual_root, temp_dir.path().join("Cargo.toml"))?;
+        let is_virtual = if !manifest_paths.contains(&virtual_root) && virtual_root.is_file() {
+            fs::copy(&virtual_root, dest.clone())?;
             virtual_root.pop();
+            
+            let write_manifest = |dest: PathBuf, om: Manifest| -> Result<(), std::io::Error> {
+                let om_serialized = ::toml::to_string(&om).expect("Cannot format as toml file");
+                let mut cargo_toml = OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .truncate(true)
+                    .open(&dest)?;
+                write!(cargo_toml, "{om_serialized}")?;
+                Ok(())
+            };
+            let copy_project = |member : String| -> Result<(PathBuf, PathBuf), std::io::Error> {
+                let tmp = temp_workspace_path.join(member.clone());
+                fs::create_dir_all(tmp.join("src"))?;
+
+                let dest_ = tmp.join("Cargo.toml");
+
+                fs::copy(
+                    workspace_root.join(member.clone()).join("Cargo.toml"),
+                    dest_.clone(),
+                )?;
+                fs::write(tmp.join("src").join("lib.rs"), "")?;
+                
+                Ok((tmp, dest_))
+            };
+
+            let mut om : Manifest = {
+                let mut buf = String::new();
+                let mut file = File::open(dest.clone())?;
+                file.read_to_string(&mut buf)?;
+                ::toml::from_str(&buf)?
+            };
+            if let Some(ref mut workspace) = om.workspace {
+                if workspace.contains_key("dependencies") {
+                    if let Some(&mut Value::Table(ref mut dependencies)) = workspace.get_mut("dependencies") {
+                        for (_dep_key, dep_value) in dependencies.into_iter() {
+                            if let Value::Table(ref mut dep) = dep_value {
+                                if dep.contains_key("path") {
+                                    if let Value::String(ref mut orig_path_) = dep["path"] {
+                                        if Path::new(orig_path_).is_relative() {
+                                            *orig_path_ = workspace_root.join(orig_path_.clone()).display().to_string();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    };
+                }
+
+                if workspace.contains_key("members") {
+                    let members = workspace.get_mut("members").unwrap();
+                    if let Value::Array(ref mut members) = *members {
+                        for member in members.iter_mut() {
+                            if let Value::String(ref mut member) = *member {
+                                let (tmp, _dest_) = copy_project(member.to_string())?;
+                                *member = format!("{}", tmp.display());
+
+                                let dest = tmp.join("Cargo.toml");
+                                let mut om : Manifest = {
+                                    let mut buf = String::new();
+                                    let mut file = File::open(dest.clone())?;
+                                    file.read_to_string(&mut buf)?;
+                                    ::toml::from_str(&buf)?
+                                };
+
+                                if let Some(ref mut package) = om.package {
+                                    if package.contains_key("workspace") {
+                                        if let Value::String(ref mut workspace) = package["workspace"] {
+                                            if Path::new(workspace).is_relative() {
+                                                *workspace = temp_workspace_path.display().to_string();
+                                            }
+                                        }
+                                    }
+                                }
+
+                                write_manifest(dest, om)?;
+                            }
+                        }
+                    }
+                }
+
+                write_manifest(dest.clone(), om)?;
+            }
+
             virtual_root.push("Cargo.lock");
             if virtual_root.is_file() {
-                fs::copy(&virtual_root, temp_dir.path().join("Cargo.lock"))?;
+                fs::copy(&virtual_root, temp_workspace_path.join("Cargo.lock"))?;
             }
-        }
+            
+            true
+        } else {
+            false
+        };
 
         //.cargo/config.toml
         // this is the preferred way
@@ -155,8 +248,21 @@ impl<'tmp> TempProject<'tmp> {
             )?;
         }
 
-        let relative_manifest = String::from(&orig_manifest[workspace_root_str.len() + 1..]);
-        let config = Self::generate_config(temp_dir.path(), &relative_manifest, options)?;
+        let common_path : PathBuf =
+            Path::new(orig_manifest)
+                .components()
+                .zip(workspace_root.components())
+                .take_while(|(c1, c2)| c1 == c2)
+                .map(|(c1, _)| c1)
+                .collect();
+        let relative_manifest = String::from(&orig_manifest[common_path.display().to_string().len() + 1..]);
+        let relative_manifest = if is_virtual && orig_manifest.starts_with(&workspace_root_str.to_string()) {
+            "!workspace/".to_owned() + &relative_manifest
+        } else {
+            relative_manifest
+        };
+        let config = Self::generate_config(&temp_dir.path(), &relative_manifest, options)?;
+        // println!("temp_project.TempProject.from_workspace / orig_manifest: {:?} / workspace_root_str: {:?} / relative_manifest: {:?} / common_path: {:?} / config.cwd: {:?}", orig_manifest, workspace_root_str, relative_manifest, common_path, config.cwd());
 
         Ok(TempProject {
             workspace: Rc::new(RefCell::new(None)),
