@@ -16,7 +16,7 @@ use cargo::{
     util::{
         important_paths::find_root_manifest_for_wd,
         network::http::{http_handle, needs_custom_http_transport},
-        CargoResult, CliError, Config,
+        CargoResult, CliError, GlobalContext,
     },
 };
 
@@ -30,7 +30,7 @@ fn main() {
     env_logger::init();
     let options = cli::parse();
 
-    let mut config = match Config::default() {
+    let mut config = match GlobalContext::default() {
         Ok(cfg) => cfg,
         Err(e) => {
             let mut shell = cargo::core::Shell::new();
@@ -71,7 +71,7 @@ fn main() {
 }
 
 /// executes the cargo-outdate command with the cargo configuration and options
-pub fn execute(options: Options, config: &mut Config) -> CargoResult<i32> {
+pub fn execute(options: Options, config: &mut GlobalContext) -> CargoResult<i32> {
     // Check if $CARGO_HOME is set before capturing the config environment
     // if it is, set it in the configure options
     let cargo_home_path = std::env::var_os("CARGO_HOME").map(std::path::PathBuf::from);

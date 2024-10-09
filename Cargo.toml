@@ -20,24 +20,23 @@ license = "MIT"
 readme = "README.md"
 repository = "https://github.com/kbknapp/cargo-outdated.git"
 description = "Cargo subcommand for displaying when dependencies are out of date"
-rust-version = "1.73.0" # MSRV
 
 [[bin]]
 name = "cargo-outdated"
 
 [dependencies]
 anyhow = "1.0"
-cargo = "~0.76"
-env_logger = "~0.11"
-git2-curl = "0.19.0"
+cargo = ">=0.82,<1"
+env_logger = ">=0.11,<1"
+git2-curl = ">=0.20,<1"
 semver = "1.0.0"
-serde = {version="1.0.114", features = ["derive"]}
-serde_json = "1.0.56"
-tabwriter = "1.2.1"
-tempfile = "3.6"
-toml = "0.8.6"
-clap = { version = "4.1.4", features = ["derive"] }
-strum = { version = "~0.26", features = ["derive"] }
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = "1.0.128"
+tabwriter = "1.4"
+tempfile = "3.13"
+toml = ">=0.8,<1"
+clap = { version = "4.5", features = ["derive"] }
+strum = { version = ">=0.26,<1", features = ["derive"] }
 
 [features]
 debug = []
@@ -48,4 +47,4 @@ default = []
 lto = true
 
 [dev-dependencies]
-pretty_assertions = "1.2.0"
+pretty_assertions = "1.4"
