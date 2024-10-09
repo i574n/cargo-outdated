@@ -920,19 +920,27 @@ fn valid_latest_version(mut requirement: &str, version: &Version) -> bool {
         // both are unstable, must be in the same channel
         (true, true) => {
             requirement = requirement.trim_start_matches(&['=', ' ', '~', '^'][..]);
-            let requirement_version = Version::parse(requirement)
-                .expect("Error could not parse requirement into a semantic version");
-            let requirement_channel = requirement_version.pre.split('.').next().unwrap();
-            let requirement_channel_numeric =
-                requirement_channel.bytes().all(|b| b.is_ascii_digit());
 
-            let version_channel = version.pre.split('.').next().unwrap();
-            let version_channel_numeric = version_channel.bytes().all(|b| b.is_ascii_digit());
+            let requirement_version = Version::parse(requirement);
+            match requirement_version {
+                Ok(requirement_version) => {
+                    let requirement_channel = requirement_version.pre.split('.').next().unwrap();
+                    let requirement_channel_numeric =
+                        requirement_channel.bytes().all(|b| b.is_ascii_digit());
 
-            match (requirement_channel_numeric, version_channel_numeric) {
-                (false, false) => requirement_channel == version_channel,
-                (true, true) => true,
-                _ => false,
+                    let version_channel = version.pre.split('.').next().unwrap();
+                    let version_channel_numeric = version_channel.bytes().all(|b| b.is_ascii_digit());
+
+                    match (requirement_channel_numeric, version_channel_numeric) {
+                        (false, false) => requirement_channel == version_channel,
+                        (true, true) => true,
+                        _ => false,
+                    }
+                },
+                Err(error) => {
+                    eprintln!("temp_project.valid_latest_version / Error could not parse requirement into a semantic version / error: {}", error);
+                    false
+                }
             }
         }
     }

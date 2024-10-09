@@ -191,7 +191,8 @@ pub fn execute(options: Options, config: &mut GlobalContext) -> CargoResult<i32>
         verbose!(config, "Resolving...", "package status");
         let root = ela_curr.determine_root(&options)?;
         ela_curr.resolve_status(&ela_compat, &ela_latest, &options, config, root, &skipped)?;
-        verbose!(config, "Printing...", "list format");
+        let format = options.format;
+        verbose!(config, format!("Printing... / format: {format:?} / root: {root:?}"), "list format");
         let mut count = 0;
 
         match options.format {

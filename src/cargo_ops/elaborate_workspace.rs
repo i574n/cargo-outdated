@@ -166,7 +166,13 @@ impl<'ela> ElaborateWorkspace<'ela> {
                 return Ok(m.package_id());
             }
         }
-        Err(anyhow!("Workspace member {} not found", member.name()))
+        let source_id = member.source_id().to_string();
+        let path = std::path::Path::new(&source_id);
+        let metadata = std::fs::metadata(path);
+        if metadata.is_ok() || std::fs::read_dir(path).is_ok() {
+            return Ok(member)
+        }
+        Err(anyhow!("elaborate_workspace.find_member / Workspace member {} not found / member: {member:?} / path: {path:?} / metadata: {metadata:?}", member.name()))
     }
 
     /// Find a contained package, which is a member or dependency inside the
